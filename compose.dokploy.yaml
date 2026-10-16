@@ -1,0 +1,74 @@
+
+services:
+  agentos-db:
+    image: agnohq/pgvector:18
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_DATABASE}
+
+    volumes:
+      - agentos_pgdata:/var/lib/postgresql
+
+    networks:
+      - agentos-internal
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  agentos-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: agentos-custom:latest
+    restart: unless-stopped
+
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+
+    expose:
+      - "8000"
+
+    environment:
+      RUNTIME_ENV: prd
+      AGNO_DEBUG: "False"
+      WAIT_FOR_DB: "True"
+
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      JWT_VERIFICATION_KEY: ${JWT_VERIFICATION_KEY}
+      AGENTOS_URL: ${AGENTOS_URL}
+      MCP_CONNECT_SECRET: ${MCP_CONNECT_SECRET}
+
+      DB_HOST: agentos-db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_DATABASE: ${DB_DATABASE}
+
+    depends_on:
+      agentos-db:
+        condition: service_healthy
+
+    networks:
+      - agentos-internal
+      - dokploy-network
+
+networks:
+  agentos-internal:
+    driver: bridge
+
+  dokploy-network:
+    external: true
+
+volumes:
+  agentos_pgdata:
